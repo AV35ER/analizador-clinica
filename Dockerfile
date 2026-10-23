@@ -16,9 +16,9 @@ RUN python -m pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 RUN python -m unittest discover -v \
-    && useradd --create-home --uid 10001 biblioteca
+    && useradd --create-home --uid 10001 clinica
 
-USER biblioteca
+USER clinica
 EXPOSE 10000
 
 CMD ["gunicorn", "--config", "gunicorn.conf.py", "app:app"]

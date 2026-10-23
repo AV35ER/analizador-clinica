@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: analizador-biblioteca
+    name: analizador-clinica
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile

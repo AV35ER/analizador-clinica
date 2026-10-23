@@ -10,9 +10,9 @@ function entorno() {
     const formulario = {querySelector: () => boton, append() {}, addEventListener: (nombre, fn) => eventos.submit = fn};
     const estado = {};
     const resultados = {};
-    const entrada = {texto: "RESERVAR L025 U104 7;", archivo: {size: 20}};
+    const entrada = {texto: "Joaquin Esquivez 74839261 25/09/2026 10:30 Cardiologia", archivo: {size: 20}};
     const contexto = {
-        window: {BIBLIOTECA_API: "http://127.0.0.1:5000"},
+        window: {CLINICA_API: "http://127.0.0.1:5000"},
         document: {querySelector: () => formulario, createElement: () => cancelar, getElementById: id => id === "resultados" ? resultados : estado},
         FormData: class {get(nombre) {return entrada[nombre];}},
         inicializarResultados() {contexto.inicializado = true;},
@@ -66,7 +66,7 @@ test("POST multipart directo presenta el resultado y activa el zoom", async () =
     await eventos.submit({preventDefault() {}});
     assert.equal(enviada.url, "http://127.0.0.1:5000/api/analizar");
     assert.equal(enviada.opciones.method, "POST");
-    assert.equal(enviada.opciones.body.get("texto"), "RESERVAR L025 U104 7;");
+    assert.equal(enviada.opciones.body.get("texto"), "Joaquin Esquivez 74839261 25/09/2026 10:30 Cardiologia");
     assert.equal(enviada.opciones.headers, undefined);
     assert.equal(resultados.innerHTML, "<svg></svg>");
     assert.equal(contexto.inicializado, true);
@@ -80,7 +80,7 @@ test("Cancelar conserva entrada y habilita un nuevo intento", async () => {
     const pendiente = eventos.submit({preventDefault() {}});
     eventos.cancelar();
     await pendiente;
-    assert.equal(entrada.texto, "RESERVAR L025 U104 7;");
+    assert.equal(entrada.texto, "Joaquin Esquivez 74839261 25/09/2026 10:30 Cardiologia");
     assert.equal(entrada.archivo.size, 20);
     assert.equal(boton.disabled, false);
     assert.equal(cancelar.hidden, true);
@@ -101,7 +101,7 @@ test("Errores de validación y Graphviz se presentan sin perder la entrada", asy
 
 test("El marcador de configuración no inicia peticiones", async () => {
     const {contexto, eventos, estado} = entorno();
-    contexto.window.BIBLIOTECA_API = "https://REEMPLAZAR.invalid";
+    contexto.window.CLINICA_API = "https://REEMPLAZAR.invalid";
     contexto.fetch = () => {throw new Error("No solicitar");};
     await eventos.submit({preventDefault() {}});
     assert.match(estado.textContent, /Falta configurar/);
@@ -112,7 +112,7 @@ test("Los controles originales funcionan al inicializar resultados nuevos", () =
     const grafico = {id: "grafico-prueba", scrollLeft: 70, scrollTop: 10, querySelector: () => imagen};
     const clases = new Set();
     const panel = {classList: {add: v => clases.add(v), remove: v => clases.delete(v)}};
-    const boton = {dataset: {token: "DIAS"}, classList: panel.classList};
+    const boton = {dataset: {token: "DNI"}, classList: panel.classList};
     const contexto = {document: {
         querySelectorAll: selector => selector === ".grafico" ? [grafico] : selector === ".boton-token" ? [boton] : [panel],
         querySelector: () => boton,
@@ -130,4 +130,20 @@ test("Los controles originales funcionan al inicializar resultados nuevos", () =
     contexto.inicializarResultados();
     assert.equal(imagen.dataset.escala, 1);
     assert.equal(grafico.scrollLeft, 0);
+});
+
+
+test("El selector AFND/AFD alterna el gráfico, la quíntupla y su tabla juntos", () => {
+    const paneles = [{dataset: {tipo: "afnd"}, hidden: false}, {dataset: {tipo: "afd"}, hidden: true}];
+    const contexto = {document: {
+        querySelectorAll: selector => selector.includes(".panel-automata") ? paneles : [],
+        querySelector: () => null
+    }};
+    vm.createContext(contexto);
+    const script = fs.readFileSync("templates/index.html", "utf8").split("<script>")[1].split("</script>")[0];
+    vm.runInContext(script, contexto);
+    contexto.seleccionarTipo("DNI", "afd");
+    assert.deepEqual(paneles.map(p => p.hidden), [true, false]);
+    contexto.seleccionarTipo("DNI", "afnd");
+    assert.deepEqual(paneles.map(p => p.hidden), [false, true]);
 });

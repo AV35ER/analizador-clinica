@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analizador Léxico de Biblioteca</title>
+    <title>Analizador de citas médicas</title>
     <style>
         * {
             box-sizing: border-box;
@@ -12,38 +12,36 @@
 
         body {
             margin: 0;
-            background: #f5f3ee;
-            color: #292929;
+            background: #fff;
+            color: #222;
             font-family: Arial, sans-serif;
             font-size: 14px;
-            line-height: 1.6;
+            line-height: 1.5;
         }
 
         main {
             max-width: 1050px;
-            margin: 35px auto;
-            padding: 0 22px 70px;
+            margin: 24px auto;
+            padding: 0 20px 40px;
         }
 
         header {
-            border-left: 4px solid #47634c;
-            padding-left: 18px;
-            margin-bottom: 35px;
+            margin-bottom: 20px;
         }
 
         h1 {
-            font-family: Georgia, serif;
-            font-size: 31px;
+            font-size: 24px;
             margin: 5px 0;
         }
 
         h2 {
-            font-size: 20px;
-            margin: 0 0 15px;
+            font-size: 19px;
+            margin: 0 0 10px;
         }
 
         h3 {
-            font-size: 17px;
+            font-size: 16px;
+            margin: 14px 0 8px;
         }
 
         p {
@@ -53,42 +51,54 @@
         .subtitulo {
             color: #666;
             font-size: 12px;
-            letter-spacing: 1px;
-            text-transform: uppercase;
         }
 
         section {
-            border-top: 1px solid #d5d0c6;
-            padding-top: 30px;
-            margin-top: 32px;
+            border-top: 1px solid #ddd;
+            padding-top: 18px;
+            margin-top: 22px;
         }
 
         .nota {
-            color: #777;
+            color: #555;
             font-size: 12px;
         }
 
         .tabla-contenedor {
             overflow-x: auto;
-            margin: 18px 0;
+            margin: 12px 0;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            background: #fffdf9;
+            background: #fff;
             font-size: 13px;
         }
 
         th {
-            background: #e3e9e0;
+            background: #f0f3f0;
             text-align: left;
         }
 
         th, td {
-            border-bottom: 1px solid #dedbd4;
-            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            padding: 8px;
             white-space: nowrap;
+        }
+
+        .lexemas {
+            min-width: 180px;
+            max-width: 260px;
+            white-space: normal;
+        }
+
+        select {
+            font: inherit;
+            padding: 4px 6px;
+            border: 1px solid #aaa;
+            background: white;
+            color: #222;
         }
 
         code {
@@ -99,8 +109,8 @@
         textarea {
             width: 100%;
             min-height: 125px;
-            padding: 14px;
-            border: 1px solid #bdb8af;
+            padding: 10px;
+            border: 1px solid #aaa;
             background: white;
             font-family: Consolas, monospace;
             font-size: 14px;
@@ -114,10 +124,10 @@
         }
 
         button {
-            background: #47634c;
+            background: #30563c;
             color: white;
             border: none;
-            padding: 11px 18px;
+            padding: 8px 14px;
             font-size: 13px;
             cursor: pointer;
         }
@@ -127,19 +137,19 @@
         }
 
         button:focus-visible {
-            outline: 3px solid #b58a45;
+            outline: 2px solid #30563c;
             outline-offset: 2px;
         }
 
         .compilar {
             margin-top: 15px;
-            min-width: 130px;
+            min-width: 110px;
         }
 
         .mensaje {
             margin-top: 18px;
             padding: 12px;
-            background: #eee7d9;
+            background: #f1f1f1;
         }
 
         .correcto {
@@ -154,17 +164,17 @@
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
-            margin: 20px 0;
+            margin: 12px 0;
         }
 
         .selector button {
-            background: #e1e6df;
+            background: #f0f3f0;
             color: #344538;
-            border: 1px solid #c5d0c3;
+            border: 1px solid #b9c5bc;
         }
 
         .selector button.activo {
-            background: #47634c;
+            background: #30563c;
             color: white;
         }
 
@@ -177,19 +187,15 @@
         }
 
         .panel {
-            padding: 20px;
-            border: 1px solid #ded9cd;
-            background: #fffdf9;
-            margin: 15px 0;
-            border-radius: 5px;
+            padding: 0;
+            margin: 14px 0;
         }
 
         .grafico {
             overflow: auto;
             background: white;
-            border: 1px solid #dedbd4;
-            border-radius: 5px;
-            padding: 18px;
+            border: 1px solid #ddd;
+            padding: 10px;
             min-height: 130px;
             max-height: 650px;
         }
@@ -212,15 +218,15 @@
 
         .controles button {
             padding: 7px 12px;
-            background: #e1e6df;
+            background: #f0f3f0;
             color: #344538;
         }
 
         .quintupla {
             display: grid;
-            grid-template-columns: 70px minmax(0, 1fr);
-            gap: 10px;
-            margin-top: 16px;
+            grid-template-columns: 40px minmax(0, 1fr);
+            gap: 6px;
+            margin-top: 10px;
         }
 
         .quintupla div {
@@ -228,7 +234,7 @@
         }
 
         .quintupla strong {
-            color: #47634c;
+            color: #30563c;
         }
 
         .transiciones {
@@ -248,8 +254,7 @@
 
         .etiqueta {
             display: inline-block;
-            background: #e3e9e0;
-            padding: 3px 8px;
+            margin-right: 12px;
             font-size: 12px;
         }
 
@@ -260,11 +265,11 @@
             }
 
             h1 {
-                font-size: 25px;
+                font-size: 22px;
             }
 
             .panel {
-                padding: 12px;
+                padding: 0;
             }
         }
     </style>
@@ -272,91 +277,59 @@
 <body>
 <main>
     <header>
-        <div class="subtitulo">Biblioteca / Teoría de la Computación</div>
-        <h1>Analizador léxico de reservas</h1>
-        <p>Identificación de tokens, expresiones regulares y generación de autómatas.</p>
+        <div class="subtitulo">Clínica privada / Teoría de la Computación</div>
+        <h1>Analizador léxico de citas médicas</h1>
     </header>
 
     <section>
-        <h2>¿En qué consiste?</h2>
-        <p>
-            Este proyecto analiza instrucciones de reserva de libros.
-            Reconoce palabras, códigos, números y símbolos según
-            las reglas de nuestro lenguaje.
-        </p>
-        <p>
-            A partir de las expresiones regulares se construyen
-            autómatas finitos no deterministas (AFND), que luego
-            se convierten en autómatas finitos deterministas (AFD).
-        </p>
-        <p class="nota">
-            El proyecto realiza análisis léxico. No registra reservas
-            reales ni verifica el orden de los tokens.
-        </p>
+        <h2>El analizador</h2>
+        <p>Analiza registros de citas médicas y construye AFND y AFD a partir de expresiones regulares.</p>
+        <p class="nota">No registra citas reales. La validación sintáctica completa queda para la etapa 3.</p>
     </section>
 
     <section>
         <h2>Definición del lenguaje</h2>
-        <p>
-            Un token es una categoría y un lexema es el texto concreto
-            que pertenece a esa categoría.
-        </p>
+        <p>Token: categoría. Lexema: texto reconocido por su expresión regular.</p>
 
         <div class="tabla-contenedor">
             <table>
                 <thead>
                     <tr>
                         <th>Token</th>
-                        <th>Lexema</th>
+                        <th>Lexemas válidos</th>
                         <th>Expresión regular</th>
                     </tr>
                 </thead>
                 <tbody>
+                    {% for nombre, expresion in expresiones.items() %}
                     <tr>
-                        <td>ACCION</td>
-                        <td>RESERVAR</td>
-                        <td><code>RESERVAR</code></td>
+                        <td>{{ nombre }}</td>
+                        <td class="lexemas">{{ ejemplos[nombre][0]|join(" / ") }}</td>
+                        <td><code>{{ expresion }}</code><br>Inválidos: {{ ejemplos[nombre][1]|join(" / ") }}</td>
                     </tr>
-                    <tr>
-                        <td>CODIGO_LIBRO</td>
-                        <td>L025</td>
-                        <td><code>L[0-9]{3}</code></td>
-                    </tr>
-                    <tr>
-                        <td>CODIGO_USUARIO</td>
-                        <td>U104</td>
-                        <td><code>U[0-9]{3}</code></td>
-                    </tr>
-                    <tr>
-                        <td>DIAS</td>
-                        <td>7</td>
-                        <td><code>[1-9][0-9]*</code></td>
-                    </tr>
-                    <tr>
-                        <td>FIN_INSTRUCCION</td>
-                        <td>;</td>
-                        <td><code>;</code></td>
-                    </tr>
+                    {% endfor %}
                 </tbody>
             </table>
         </div>
     </section>
 
     <section>
-        <h2>Probar una instrucción</h2>
+        <h2>Probar registros de citas</h2>
+        <p>Un registro por línea: nombre y apellidos, DNI, fecha, hora y especialidad.</p>
+        <p class="nota">Nombre con espacios simples y especialidad de una palabra, sin tildes ni ñ.
+        FECHA comprueba rangos básicos: acepta 31/02/2026 aunque no exista en el calendario.</p>
 
         <form method="POST" enctype="multipart/form-data">
             <label for="texto"><strong>Texto de entrada</strong></label>
 
             <textarea id="texto" name="texto">{{ texto }}</textarea>
 
-            <p><strong>O selecciona un archivo TXT</strong></p>
+            <p><strong>O carga un archivo TXT</strong></p>
 
             <input type="file" name="archivo" accept=".txt">
 
             <p class="nota">
-                El archivo reemplaza al texto escrito.
-                Codificación UTF-8. Máximo 1 MB.
+                UTF-8, máximo 1 MiB. El archivo reemplaza el texto escrito.
             </p>
 
             <button class="compilar" type="submit">Compilar</button>
@@ -396,6 +369,12 @@
         if (boton) {
             boton.classList.add("activo");
         }
+    }
+
+    function seleccionarTipo(nombre, tipo) {
+        document.querySelectorAll('#token-' + nombre + ' .panel-automata').forEach(panel => {
+            panel.hidden = panel.dataset.tipo !== tipo;
+        });
     }
 
     function cambiarZoom(id, factor) {

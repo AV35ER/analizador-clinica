@@ -14,12 +14,7 @@ import automatas as au
 def avanzar(automata, estados, simbolo):
     destinos = set()
     for transicion in automata["transiciones"]:
-        etiqueta = transicion["simbolo"]
-        coincide = etiqueta == simbolo
-        if etiqueta == "[0-9]":
-            coincide = simbolo in "0123456789"
-        elif etiqueta == "[1-9]":
-            coincide = simbolo in "123456789"
+        coincide = simbolo in au.expandir_simbolo(transicion["simbolo"])
         if transicion["origen"] in estados and coincide:
             destinos.add(transicion["destino"])
     return au.cierre_epsilon(destinos, automata["transiciones"])
@@ -40,23 +35,17 @@ class ProyectoTests(unittest.TestCase):
         cls.cliente = app.app.test_client()
 
     def test_entrada_valida(self):
-        tokens, errores = app.analizar("RESERVAR L025 U104 7;")
+        tokens, errores = app.analizar(app.EJEMPLO)
         self.assertEqual([t["token"] for t in tokens], list(au.EXPRESIONES))
         self.assertEqual(errores, [])
 
     def test_error_completo(self):
-        tokens, errores = app.analizar("RESERVAR X025 U104 7;")
+        tokens, errores = app.analizar(app.EJEMPLO.replace("74839261", "7483926"))
         self.assertEqual(len(tokens), 4)
-        self.assertEqual(errores, [{"linea": 1, "columna": 10, "lexema": "X025"}])
+        self.assertEqual(errores, [{"linea": 1, "columna": 18, "lexema": "7483926", "detalle": "No corresponde a DNI"}])
 
     def test_limites_regex_y_automatas(self):
-        casos = {
-            "ACCION": (["RESERVAR"], ["", "RESERVA", "RESERVARR", "reservar"]),
-            "CODIGO_LIBRO": (["L025", "L000", "L999"], ["L25", "L1234", "L", "X025", "L٠٢٥"]),
-            "CODIGO_USUARIO": (["U104", "U000", "U999"], ["U12", "U1234", "u104"]),
-            "DIAS": (["7", "15", "120", "1", "9", "10", "1" + "0" * 100], ["", "0", "007", "01", "-1", "1.5", "١"]),
-            "FIN_INSTRUCCION": ([";"], ["", ";;", ":"])
-        }
+        casos = au.EJEMPLOS
         for token, (validos, invalidos) in casos.items():
             muestras = set(validos + invalidos)
             muestras.update("".join(p) for n in range(4) for p in itertools.product("01LU;", repeat=n))
@@ -74,9 +63,6 @@ class ProyectoTests(unittest.TestCase):
                 self.assertTrue(re.fullmatch(au.EXPRESIONES[token], texto))
             for texto in invalidos:
                 self.assertIsNone(re.fullmatch(au.EXPRESIONES[token], texto))
-        tokens, errores = app.analizar("7 15 120 0 007 L025 U104 L25 U12 L1234")
-        self.assertEqual(len(tokens), 5)
-        self.assertEqual([e["lexema"] for e in errores], ["0", "007", "L25", "U12", "L1234"])
 
     def test_equivalencia_todos_estados_alcanzables(self):
         for datos in self.datos.values():
@@ -123,18 +109,21 @@ class ProyectoTests(unittest.TestCase):
                 visual = app.preparar_tabla(automata, tipo == "afnd")
                 tabla = {f["estado"]: f for f in datos["tabla_" + tipo]}
                 for fila in visual["filas"]:
-                    for simbolo in visual["alfabeto"]:
-                        esperado = set()
-                        for t in automata["transiciones"]:
-                            if t["origen"] == fila["estado"] and (t["simbolo"] == simbolo or simbolo in au.expandir_simbolo(t["simbolo"])):
-                                esperado.add(t["destino"])
-                        self.assertEqual(set(tabla[fila["estado"]].get(simbolo, [])), esperado)
-                        self.assertEqual(set(fila["destinos"][simbolo].split(", ")) if esperado else set(), esperado)
+                    for etiqueta, simbolos in visual["grupos"]:
+                        for simbolo in simbolos:
+                            esperado = {t["destino"] for t in automata["transiciones"]
+                                        if t["origen"] == fila["estado"] and
+                                        (t["simbolo"] == simbolo or simbolo in au.expandir_simbolo(t["simbolo"]))}
+                            self.assertEqual(set(tabla[fila["estado"]].get(simbolo, [])), esperado)
+                            self.assertEqual(set(fila["destinos"][etiqueta].split(", ")) if esperado else set(), esperado)
                 raiz = ElementTree.fromstring(datos["imagen_" + tipo])
                 nodos = raiz.findall('.//s:g[@class="node"]', ns)
                 self.assertEqual({n.find("s:title", ns).text for n in nodos}, set(automata["estados"]) | {"inicio"})
                 aristas = raiz.findall('.//s:g[@class="edge"]', ns)
-                esperadas = [(t["origen"] + "->" + t["destino"], t["simbolo"]) for t in automata["transiciones"]]
+                grupos = {}
+                for t in automata["transiciones"]:
+                    grupos.setdefault((t["origen"], t["destino"]), []).append(t["simbolo"])
+                esperadas = [(a + "->" + b, au.etiqueta_simbolos(valores)) for (a, b), valores in grupos.items()]
                 reales = [(e.find("s:title", ns).text, e.find("s:text", ns).text) for e in aristas if e.find("s:text", ns) is not None]
                 self.assertCountEqual(reales, esperadas)
                 for nodo in nodos:
@@ -149,17 +138,17 @@ class ProyectoTests(unittest.TestCase):
         self.assertEqual(respuesta.data.count(b"<svg"), 10)
         self.assertNotIn(b"static/img", respuesta.data)
         self.assertNotIn(b"<footer", respuesta.data)
-        respuesta = self.cliente.post("/", data={"texto": "7 15"})
-        self.assertEqual(respuesta.data.count(b"<svg"), 2)
-        self.assertNotIn(b'id="token-ACCION"', respuesta.data)
-        self.assertEqual(self.cliente.post("/", data={"texto": "???"}).data.count(b"<svg"), 0)
+        # Los cinco tokens se consultan incluso si no aparecen en la entrada.
+        respuesta = self.cliente.post("/", data={"texto": "???"})
+        self.assertEqual(respuesta.data.count(b"<svg"), 10)
+        self.assertIn(b"seleccionarTipo", respuesta.data)
 
-    def test_txt_multilinea_y_orden_libre(self):
-        texto = "7;\nU104 L025 RESERVAR"
+    def test_txt_multilinea_y_campos(self):
+        texto = app.EJEMPLO + "\n" + app.EJEMPLO
         tokens, errores = app.analizar(texto)
-        self.assertEqual(len(tokens), 5)
+        self.assertEqual(len(tokens), 10)
         self.assertEqual(errores, [])
-        self.assertEqual((tokens[2]["linea"], tokens[2]["columna"]), (2, 1))
+        self.assertEqual((tokens[5]["linea"], tokens[5]["columna"]), (2, 1))
         respuesta = self.cliente.post("/", data={"texto": "ignorado", "archivo": (io.BytesIO(b"\xef\xbb\xbf" + texto.encode()), "entrada.TXT")})
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(respuesta.data.count(b"<svg"), 10)
@@ -174,17 +163,39 @@ class ProyectoTests(unittest.TestCase):
         antes = {p.relative_to(Path.cwd()) for p in Path.cwd().rglob("*") if p.is_file() and p.suffix in (".svg", ".png", ".gv")}
         au.generar_token.cache_clear()
         with patch.object(au.Digraph, "render", side_effect=AssertionError("No escribir imágenes")):
-            primero = au.generar_todos(["DIAS"])
+            primero = au.generar_todos(["DNI"])
             with patch.object(au.Digraph, "pipe", side_effect=AssertionError("No regenerar")):
-                self.assertIs(primero["DIAS"], au.generar_todos(["DIAS"])["DIAS"])
+                self.assertIs(primero["DNI"], au.generar_todos(["DNI"])["DNI"])
         despues = {p.relative_to(Path.cwd()) for p in Path.cwd().rglob("*") if p.is_file() and p.suffix in (".svg", ".png", ".gv")}
         self.assertEqual(antes, despues)
 
     def test_graphviz_ausente(self):
         with patch.object(app, "preparar_resultados", side_effect=app.ExecutableNotFound(["dot"])):
-            respuesta = self.cliente.post("/", data={"texto": "7"})
+            respuesta = self.cliente.post("/", data={"texto": app.EJEMPLO})
         self.assertEqual(respuesta.status_code, 200)
         self.assertIn(b"PATH", respuesta.data)
+
+    def test_parser_general_y_errores(self):
+        for expresion in ("(a|b)+c?", "[A-Cx-z]{2,3}", "a{0}", "(ab){1,}", "(a|)b", "[12][0-9]", "a*", r"a\+b"):
+            afnd = au.crear_afnd(expresion)
+            afd = au.convertir_afd(afnd)
+            for n in range(5):
+                for partes in itertools.product("abc+", repeat=n):
+                    texto = "".join(partes)
+                    esperado = re.fullmatch(expresion, texto) is not None
+                    self.assertEqual(acepta(afnd, texto), esperado, (expresion, texto))
+                    self.assertEqual(acepta(afd, texto), esperado, (expresion, texto))
+        for expresion in ("[z-a]", "[", "(a", "a{3,2}", "a{a}", "a{2", "*a", "a)", "[^a]", r"\d", r"[\d]"):
+            with self.assertRaises(ValueError, msg=expresion):
+                au.crear_afnd(expresion)
+
+    def test_campos_nombre_y_limitaciones(self):
+        for texto, lexema in ((app.EJEMPLO.replace("Joaquin Esquivez", "Joaquin"), "Joaquin"),
+                              (app.EJEMPLO.replace("Joaquin", "José"), "José Esquivez"),
+                              (app.EJEMPLO.replace("10:30", "24:00"), "24:00")):
+            _, errores = app.analizar(texto)
+            self.assertIn(lexema, [e["lexema"] for e in errores])
+        self.assertTrue(acepta(self.datos["FECHA"]["afnd"], "31/02/2026"))
 
 
 if __name__ == "__main__":

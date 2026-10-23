@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from app import LIMITE_ENTRADA, app
+from app import LIMITE_ENTRADA, app, EJEMPLO
 
 
 class DespliegueTests(unittest.TestCase):
@@ -55,29 +55,30 @@ class DespliegueTests(unittest.TestCase):
             self.assertEqual(respuesta.headers["Access-Control-Allow-Origin"], origen)
             self.assertIn("POST", respuesta.headers["Access-Control-Allow-Methods"])
             self.assertNotIn("Access-Control-Allow-Origin", self.cliente.get("/healthz", headers={"Origin": "https://otro.invalid"}).headers)
-            respuesta = self.cliente.post("/api/analizar", data={"archivo": (io.BytesIO(b"RESERVAR L025\nU104 7;"), "entrada.txt")}, headers={"Origin": origen})
+            respuesta = self.cliente.post("/api/analizar", data={"archivo": (io.BytesIO(EJEMPLO.encode()), "entrada.txt")}, headers={"Origin": origen})
             self.assertEqual(respuesta.status_code, 200)
             self.assertEqual(respuesta.headers["Access-Control-Allow-Origin"], origen)
             self.assertEqual(len(respuesta.json["tokens"]), 5)
             self.assertEqual(respuesta.json["errores"], [])
             self.assertEqual(respuesta.json["html"].count("<svg"), 10)
-            pagina = self.cliente.post("/", data={"texto": "RESERVAR L025\nU104 7;"}).get_data(as_text=True)
+            pagina = self.cliente.post("/", data={"texto": EJEMPLO}).get_data(as_text=True)
             self.assertIn(respuesta.json["html"], pagina)
             grande = self.cliente.post("/api/analizar", data={"texto": "x" * (LIMITE_ENTRADA + 1)}, headers={"Origin": origen})
             self.assertEqual(grande.status_code, 413)
             self.assertEqual(grande.headers["Access-Control-Allow-Origin"], origen)
             self.assertIn("mensaje", grande.json)
-        invalida = self.cliente.post("/api/analizar", data={"texto": "RESERVAR X025 U104 7;"})
+        invalida = self.cliente.post("/api/analizar", data={"texto": EJEMPLO.replace("74839261", "7483926")})
         self.assertEqual(len(invalida.json["tokens"]), 4)
-        self.assertEqual(invalida.json["errores"][0]["lexema"], "X025")
+        self.assertEqual(invalida.json["errores"][0]["lexema"], "7483926")
         self.assertEqual(self.cliente.post("/api/analizar", data={"texto": ""}).status_code, 400)
 
     def test_frontend_estatico_sin_graphviz(self):
         from generar_frontend import generar
 
-        with patch("automatas.Digraph.pipe", side_effect=AssertionError("El frontend no debe necesitar dot")):
-            generar()
-        pagina = Path("netlify-public/index.html").read_text(encoding="utf-8")
+        with TemporaryDirectory() as carpeta:
+            with patch("automatas.Digraph.pipe", side_effect=AssertionError("El frontend no debe necesitar dot")):
+                generar(Path(carpeta))
+            pagina = Path(carpeta, "index.html").read_text(encoding="utf-8")
         self.assertNotIn("{%", pagina)
         self.assertIn('src="/cliente.js"', pagina)
         self.assertIn('id="resultados"', pagina)

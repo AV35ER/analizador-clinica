@@ -1,1 +1,1 @@
-window.BIBLIOTECA_API = "https://REEMPLAZAR-SERVICIO-RENDER.invalid";
+window.CLINICA_API = "https://REEMPLAZAR-SERVICIO-RENDER.invalid";

@@ -32,15 +32,15 @@ def verificar(base, origen=None):
 
     estado, cuerpo, _ = solicitar(base)
     assert estado == 200 and b'<form method="POST"' in cuerpo
-    datos = urlencode({"texto": "RESERVAR L025 U104 7;"}).encode()
+    datos = urlencode({"texto": "Joaquin Esquivez 74839261 25/09/2026 10:30 Cardiologia"}).encode()
     estado, cuerpo, headers = solicitar(base, datos=datos, tipo="application/x-www-form-urlencoded")
     assert estado == 200 and cuerpo.count(b"<svg") == 10
     assert b"static/img" not in cuerpo and headers["Cache-Control"] == "no-store"
 
-    limite = "BibliotecaPruebaMultipart"
+    limite = "ClinicaPruebaMultipart"
     contenido = (
         f"--{limite}\r\nContent-Disposition: form-data; name=\"archivo\"; filename=\"prueba.txt\"\r\n"
-        "Content-Type: text/plain\r\n\r\nRESERVAR L025\nU104 7;\r\n"
+        "Content-Type: text/plain\r\n\r\nJoaquin Esquivez 74839261 25/09/2026 10:30 Cardiologia\r\n"
         f"--{limite}--\r\n"
     ).encode()
     estado, cuerpo, _ = solicitar(base, datos=contenido, tipo="multipart/form-data; boundary=" + limite)

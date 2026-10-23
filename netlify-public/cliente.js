@@ -72,7 +72,7 @@ function conectarFormulario() {
             avisar("El archivo supera el máximo de 1 MiB.");
             return;
         }
-        const origen = (window.BIBLIOTECA_API || "").replace(/\/$/, "");
+        const origen = (window.CLINICA_API || "").replace(/\/$/, "");
         if (!/^https?:\/\//.test(origen) || origen.includes(".invalid")) {
             avisar("Falta configurar la URL real del servidor Render antes de publicar.");
             return;

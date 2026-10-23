@@ -34,7 +34,7 @@
                 <p>
                     Línea {{ e.linea }},
                     columna {{ e.columna }}:
-                    <strong>{{ e.lexema }}</strong>
+                    <strong>{{ e.lexema }}</strong> {{ e.detalle }}
                 </p>
             {% endfor %}
         {% else %}
@@ -53,9 +53,7 @@
         <h2>Generación de autómatas</h2>
 
         <p>
-            Selecciona un token reconocido para consultar
-            su expresión regular, AFND, AFD, quíntuplas
-            y tablas de transiciones.
+            Selecciona un token y el tipo de autómata para consultar su gráfico, quíntupla y tabla de transiciones.
         </p>
 
         <div class="selector">
@@ -88,13 +86,21 @@
                 </p>
             </div>
 
+            <p>Válidos: {{ datos.ejemplos[0]|join(" / ") }}.
+            Inválidos: {{ datos.ejemplos[1]|join(" / ") }}.</p>
+            <label>Autómata
+                <select onchange="seleccionarTipo('{{ nombre }}', this.value)">
+                    <option value="afnd">AFND</option><option value="afd">AFD</option>
+                </select>
+            </label>
             {% for tipo in ["afnd", "afd"] %}
                 {% set automata = datos[tipo] %}
                 {% set tabla = datos["tabla_visual_" ~ tipo] %}
                 {% set quintupla = datos["quintupla_" ~ tipo] %}
 
-                <div class="panel">
+                <div class="panel panel-automata" data-tipo="{{ tipo }}" {% if tipo == "afd" %}hidden{% endif %}>
                     <h3>{{ tipo|upper }}</h3>
+                    <p>M = (Q, Σ, δ, q₀, F)</p>
 
                     <div class="controles">
                         <button type="button"
@@ -130,8 +136,7 @@
 
                         <strong>δ</strong>
                         <div>
-                            Función de transición representada
-                            en la tabla inferior.
+                            Ver tabla de transiciones.
                         </div>
 
                         <strong>q₀</strong>
@@ -195,9 +200,8 @@
                     </div>
 
                     <p class="nota">
-                        → Estado inicial.
-                        * Estado de aceptación.
-                        ∅ Sin transición.
+                        → Inicial. * Aceptación. ∅ Sin transición. ␠ Espacio.
+                        Los símbolos agrupados comparten destinos. El subconjunto vacío del AFD es el sumidero.
                     </p>
                 </div>
             {% endfor %}
