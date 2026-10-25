@@ -32,22 +32,24 @@ def verificar(base, origen=None):
 
     estado, cuerpo, _ = solicitar(base)
     assert estado == 200 and b'<form method="POST"' in cuerpo
-    datos = urlencode({"texto": "Joaquin Esquivez 74839261 25/09/2026 10:30 Cardiologia"}).encode()
+    datos = urlencode({"texto": "G01 X01 Y20 F120;"}).encode()
     estado, cuerpo, headers = solicitar(base, datos=datos, tipo="application/x-www-form-urlencoded")
-    assert estado == 200 and cuerpo.count(b"<svg") == 10
+    assert estado == 200 and cuerpo.count(b"<svg") == 15
     assert b"static/img" not in cuerpo and headers["Cache-Control"] == "no-store"
 
-    limite = "ClinicaPruebaMultipart"
+    limite = "SimuladorPruebaMultipart"
     contenido = (
         f"--{limite}\r\nContent-Disposition: form-data; name=\"archivo\"; filename=\"prueba.txt\"\r\n"
-        "Content-Type: text/plain\r\n\r\nJoaquin Esquivez 74839261 25/09/2026 10:30 Cardiologia\r\n"
+        "Content-Type: text/plain\r\n\r\nG01 X01 Y20 F120;\r\n"
         f"--{limite}--\r\n"
     ).encode()
     estado, cuerpo, _ = solicitar(base, datos=contenido, tipo="multipart/form-data; boundary=" + limite)
-    assert estado == 200 and cuerpo.count(b"<svg") == 10
+    assert estado == 200 and cuerpo.count(b"<svg") == 15
     estado, cuerpo, headers = solicitar(base, "/api/analizar", datos=contenido, tipo="multipart/form-data; boundary=" + limite, origen=origen)
     resultado = json.loads(cuerpo)
-    assert estado == 200 and len(resultado["tokens"]) == 5 and resultado["html"].count("<svg") == 10
+    assert estado == 200 and len(resultado["tokens"]) == 5 and resultado["html"].count("<svg") == 15
+    assert not resultado["errores"] and not resultado["errores_instruccion"]
+    assert resultado["traduccion"][0]["hasta"] == [1, 20]
     if origen:
         assert headers["Access-Control-Allow-Origin"] == origen
         estado, _, headers = solicitar(base, "/api/analizar", origen=origen, metodo="OPTIONS")
@@ -56,7 +58,7 @@ def verificar(base, origen=None):
     assert estado == 404
     estado, _, _ = solicitar(base, datos=urlencode({"texto": " " * (1024 * 1024 + 1)}).encode(), tipo="application/x-www-form-urlencoded")
     assert estado == 413
-    print("HTTP correcto: salud, GET, POST, API JSON, TXT multipart, 10 SVG, cache, 404 y 413" + (", CORS y OPTIONS" if origen else ""))
+    print("HTTP correcto: salud, GET, POST, API JSON, traduccion, TXT multipart, 15 SVG, cache, 404 y 413" + (", CORS y OPTIONS" if origen else ""))
 
 
 if __name__ == "__main__":

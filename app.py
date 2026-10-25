@@ -18,35 +18,61 @@ REGLAS = [
     for nombre, patron in EXPRESIONES.items()
 ]
 
-EJEMPLO = "Joaquin Esquivez 74839261 25/09/2026 10:30 Cardiologia"
+EJEMPLO = "G01 X01 Y20 F120;"
+CODIGOS = {
+    "G00": "Mover directamente a X e Y en el simulador.",
+    "G01": "Mover en línea recta a X e Y; F indica velocidad, por defecto 100.",
+    "G28": "Regresar al origen (0, 0)."
+}
 
 
 def analizar(texto):
     tokens = []
     errores = []
 
-    # Un registro por línea: los cuatro últimos campos son simples;
-    # el prefijo conserva los espacios internos del nombre compuesto.
     for numero, linea in enumerate(texto.splitlines(), start=1):
-        partes = list(re.finditer(r"[^\s]+", linea))
-        if not partes:
-            continue
-        if len(partes) < 5:
-            errores.append({"linea": numero, "columna": partes[0].start() + 1,
-                            "lexema": linea.strip(),
-                            "detalle": "Se requieren nombre, DNI, fecha, hora y especialidad."})
-            continue
-        inicio, fin = partes[0].start(), partes[-5].end()
-        campos = [(inicio, linea[inicio:fin])]
-        campos.extend((p.start(), p.group()) for p in partes[-4:])
-        for (nombre, patron), (columna, lexema) in zip(REGLAS, campos):
-            elemento = {"linea": numero, "columna": columna + 1, "lexema": lexema}
-            if patron.fullmatch(lexema):
-                tokens.append({**elemento, "token": nombre})
+        for coincidencia in re.finditer(r";|[^\s;]+", linea):
+            lexema = coincidencia.group()
+            elemento = {"linea": numero, "columna": coincidencia.start() + 1, "lexema": lexema}
+            for nombre, patron in REGLAS:
+                if patron.fullmatch(lexema):
+                    tokens.append({**elemento, "token": nombre})
+                    break
             else:
-                errores.append({**elemento, "detalle": "No corresponde a " + nombre})
+                errores.append({**elemento, "detalle": "Lexema no reconocido"})
 
     return tokens, errores
+
+
+def interpretar(tokens):
+    """Reconoce tres formatos regulares y traduce sin AST ni analisis LR.
+
+    El programa se valida completo antes de devolver una simulacion; si alguna
+    linea falla, no se presenta como ejecutado un programa parcial.
+    """
+    lineas = {}
+    for token in tokens:
+        lineas.setdefault(token["linea"], []).append(token)
+    resultado, errores = [], []
+    posicion = [0, 0]
+    for numero, elementos in lineas.items():
+        tipos = [t["token"] for t in elementos]
+        codigo = elementos[0]["lexema"]
+        formatos = [["COMANDO", "COORDENADA_X", "COORDENADA_Y", "FIN_INSTRUCCION"],
+                    ["COMANDO", "COORDENADA_X", "COORDENADA_Y", "VELOCIDAD", "FIN_INSTRUCCION"]]
+        valido = (codigo == "G28" and tipos == ["COMANDO", "FIN_INSTRUCCION"]) or (
+            codigo in ("G00", "G01") and tipos in formatos and
+            (codigo == "G01" or "VELOCIDAD" not in tipos))
+        if not valido:
+            errores.append({"linea": numero, "detalle": "Formato de instrucción incorrecto; consulta el diccionario."})
+            continue
+        destino = [0, 0] if codigo == "G28" else [int(t["lexema"][1:]) for t in elementos[1:3]]
+        paso = {"linea": numero, "codigo": codigo, "desde": posicion[:], "hasta": destino}
+        if codigo == "G01":
+            paso["velocidad"] = int(elementos[3]["lexema"][1:]) if "VELOCIDAD" in tipos else 100
+        resultado.append(paso)
+        posicion = destino
+    return ([], errores) if errores else (resultado, [])
 
 
 def preparar_tabla(automata, es_afnd, tabla=None):
@@ -74,7 +100,8 @@ def preparar_resultados():
         resultados[nombre] = {
             **datos,
             "tabla_visual_afnd": preparar_tabla(datos["afnd"], True, datos["tabla_afnd"]),
-            "tabla_visual_afd": preparar_tabla(datos["afd"], False, datos["tabla_afd"])
+            "tabla_visual_afd": preparar_tabla(datos["afd"], False, datos["tabla_afd"]),
+            "tabla_visual_afd_minimo": preparar_tabla(datos["afd_minimo"], False, datos["tabla_afd_minimo"])
         }
 
     return resultados
@@ -89,6 +116,7 @@ def inicio():
     mensaje = ""
     analizado = False
     resultados = {}
+    traduccion, errores_instruccion = [], []
 
     if request.method == "POST":
         texto = request.form.get("texto", "")
@@ -111,6 +139,8 @@ def inicio():
                 abort(413)
             if texto.strip():
                 tokens, errores = analizar(texto)
+                if not errores:
+                    traduccion, errores_instruccion = interpretar(tokens)
                 analizado = True
                 try:
                     resultados = preparar_resultados()
@@ -120,18 +150,20 @@ def inicio():
                         "esté instalado y que el comando dot esté disponible en PATH."
                     )
             else:
-                mensaje = "Escribe un registro o carga un archivo."
+                mensaje = "Escribe instrucciones o carga un archivo."
 
     if request.path == "/api/analizar":
         return {
             "html": render_template(
                 "resultados.html", tokens=tokens, errores=errores,
-                analizado=analizado, resultados=resultados
+                analizado=analizado, resultados=resultados,
+                traduccion=traduccion, errores_instruccion=errores_instruccion
             ),
             "mensaje": mensaje,
             "texto": texto,
             "tokens": tokens,
-            "errores": errores
+            "errores": errores,
+            "traduccion": traduccion, "errores_instruccion": errores_instruccion
         }, 503 if analizado and mensaje else 400 if mensaje else 200
 
     return render_template(
@@ -142,7 +174,8 @@ def inicio():
         mensaje=mensaje,
         analizado=analizado,
         resultados=resultados,
-        expresiones=EXPRESIONES, ejemplos=EJEMPLOS
+        expresiones=EXPRESIONES, ejemplos=EJEMPLOS, codigos=CODIGOS,
+        traduccion=traduccion, errores_instruccion=errores_instruccion
     )
 
 

@@ -40,9 +40,9 @@ class ProyectoTests(unittest.TestCase):
         self.assertEqual(errores, [])
 
     def test_error_completo(self):
-        tokens, errores = app.analizar(app.EJEMPLO.replace("74839261", "7483926"))
+        tokens, errores = app.analizar(app.EJEMPLO.replace("X01", "X001"))
         self.assertEqual(len(tokens), 4)
-        self.assertEqual(errores, [{"linea": 1, "columna": 18, "lexema": "7483926", "detalle": "No corresponde a DNI"}])
+        self.assertEqual(errores, [{"linea": 1, "columna": 5, "lexema": "X001", "detalle": "Lexema no reconocido"}])
 
     def test_limites_regex_y_automatas(self):
         casos = au.EJEMPLOS
@@ -57,7 +57,7 @@ class ProyectoTests(unittest.TestCase):
                     muestras.add(extra + valido)
             for texto in muestras:
                 esperado = re.fullmatch(au.EXPRESIONES[token], texto) is not None
-                for tipo in ("afnd", "afd"):
+                for tipo in ("afnd", "afd", "afd_minimo"):
                     self.assertEqual(acepta(self.datos[token][tipo], texto), esperado, (token, tipo, texto))
             for texto in validos:
                 self.assertTrue(re.fullmatch(au.EXPRESIONES[token], texto))
@@ -94,10 +94,81 @@ class ProyectoTests(unittest.TestCase):
                 self.assertTrue(acepta(automata, texto))
             self.assertFalse(acepta(automata, "L"))
 
+    def test_minimizacion_equivalente_y_minima(self):
+        for datos in self.datos.values():
+            original, minimo = datos["afd"], datos["afd_minimo"]
+            alfabeto = au.obtener_alfabeto(original)
+            self.assertEqual(alfabeto, au.obtener_alfabeto(minimo))
+            delta = {(t["origen"], t["simbolo"]): t["destino"] for t in original["transiciones"]}
+            delta_min = {(t["origen"], t["simbolo"]): t["destino"] for t in minimo["transiciones"]}
+            self.assertEqual(len(delta_min), len(minimo["transiciones"]))
+            self.assertEqual(len(delta_min), len(minimo["estados"]) * len(alfabeto))
+            grupos = minimo["equivalencias"]
+            self.assertCountEqual([e for grupo in grupos.values() for e in grupo], original["estados"])
+            pendientes = deque([(original["inicial"], minimo["inicial"])])
+            vistos = set()
+            while pendientes:
+                a, b = pendientes.popleft()
+                if (a, b) in vistos:
+                    continue
+                vistos.add((a, b))
+                self.assertIn(a, grupos[b])
+                self.assertEqual(a in original["finales"], b in minimo["finales"])
+                for simbolo in alfabeto:
+                    pendientes.append((delta[a, simbolo], delta_min[b, simbolo]))
+            self.assertEqual({b for _, b in vistos}, set(minimo["estados"]))
+            # Todo par de estados mínimos debe tener algún sufijo distinguible.
+            for a, b in itertools.combinations(minimo["estados"], 2):
+                cola, visitados, distinguibles = deque([(a, b)]), set(), False
+                while cola:
+                    x, y = cola.popleft()
+                    if (x, y) in visitados:
+                        continue
+                    visitados.add((x, y))
+                    if (x in minimo["finales"]) != (y in minimo["finales"]):
+                        distinguibles = True
+                        break
+                    cola.extend((delta_min[x, s], delta_min[y, s]) for s in alfabeto)
+                self.assertTrue(distinguibles, (a, b))
+
+    def test_minimizacion_casos_limite(self):
+        for expresion, muestras in (("", ["", "a"]), ("a*", ["", "a", "aaaa", "b"]),
+                                    ("a|b", ["", "a", "b", "ab"])):
+            afd = au.convertir_afd(au.crear_afnd(expresion))
+            minimo = au.minimizar_afd(afd)
+            for texto in muestras:
+                self.assertEqual(acepta(minimo, texto), re.fullmatch(expresion, texto) is not None)
+        vacio = {"estados": ["D0"], "inicial": "D0", "finales": [],
+                 "transiciones": [{"origen": "D0", "simbolo": "a", "destino": "D0"}]}
+        self.assertEqual(au.minimizar_afd(vacio)["finales"], [])
+
+    def test_thompson_positivo_equivalente_a_copias(self):
+        class ThompsonPorCopias(au.GeneradorAFND):
+            def desde_arbol(self, nodo):
+                if nodo[0] == "repeticion" and nodo[2:] == (1, None):
+                    return self.concatenar(self.desde_arbol(nodo[1]),
+                                           self.estrella(self.desde_arbol(nodo[1])))
+                return super().desde_arbol(nodo)
+
+        for expresion in [*au.EXPRESIONES.values(), "(a?)+", "(a+)+", "(ab)+", "(a|)+"]:
+            viejo = au.convertir_afd(ThompsonPorCopias().construir(expresion))
+            nuevo = au.convertir_afd(au.crear_afnd(expresion))
+            delta_v = {(t["origen"], t["simbolo"]): t["destino"] for t in viejo["transiciones"]}
+            delta_n = {(t["origen"], t["simbolo"]): t["destino"] for t in nuevo["transiciones"]}
+            self.assertEqual(au.obtener_alfabeto(viejo), au.obtener_alfabeto(nuevo))
+            cola, vistos = deque([(viejo["inicial"], nuevo["inicial"])]), set()
+            while cola:
+                a, b = cola.popleft()
+                if (a, b) in vistos:
+                    continue
+                vistos.add((a, b))
+                self.assertEqual(a in viejo["finales"], b in nuevo["finales"])
+                cola.extend((delta_v[a, s], delta_n[b, s]) for s in au.obtener_alfabeto(viejo))
+
     def test_tablas_quintuplas_y_svg(self):
         ns = {"s": "http://www.w3.org/2000/svg"}
         for datos in self.datos.values():
-            for tipo in ("afnd", "afd"):
+            for tipo in ("afnd", "afd", "afd_minimo"):
                 automata = datos[tipo]
                 quint = datos["quintupla_" + tipo]
                 self.assertEqual(quint["Q"], automata["estados"])
@@ -135,12 +206,12 @@ class ProyectoTests(unittest.TestCase):
         self.assertEqual(self.cliente.get("/").status_code, 200)
         respuesta = self.cliente.post("/", data={"texto": app.EJEMPLO})
         self.assertEqual(respuesta.status_code, 200)
-        self.assertEqual(respuesta.data.count(b"<svg"), 10)
+        self.assertEqual(respuesta.data.count(b"<svg"), 15)
         self.assertNotIn(b"static/img", respuesta.data)
         self.assertNotIn(b"<footer", respuesta.data)
         # Los cinco tokens se consultan incluso si no aparecen en la entrada.
         respuesta = self.cliente.post("/", data={"texto": "???"})
-        self.assertEqual(respuesta.data.count(b"<svg"), 10)
+        self.assertEqual(respuesta.data.count(b"<svg"), 15)
         self.assertIn(b"seleccionarTipo", respuesta.data)
 
     def test_txt_multilinea_y_campos(self):
@@ -151,7 +222,7 @@ class ProyectoTests(unittest.TestCase):
         self.assertEqual((tokens[5]["linea"], tokens[5]["columna"]), (2, 1))
         respuesta = self.cliente.post("/", data={"texto": "ignorado", "archivo": (io.BytesIO(b"\xef\xbb\xbf" + texto.encode()), "entrada.TXT")})
         self.assertEqual(respuesta.status_code, 200)
-        self.assertEqual(respuesta.data.count(b"<svg"), 10)
+        self.assertEqual(respuesta.data.count(b"<svg"), 15)
         for contenido, nombre, mensaje in [(b"abc", "a.csv", b"Selecciona"), (b"\xff", "a.txt", b"UTF-8")]:
             self.assertIn(mensaje, self.cliente.post("/", data={"archivo": (io.BytesIO(contenido), nombre)}).data)
         respuesta = self.cliente.post("/", data={"archivo": (io.BytesIO(b"x" * (1024 * 1024 + 1)), "a.txt")})
@@ -163,9 +234,9 @@ class ProyectoTests(unittest.TestCase):
         antes = {p.relative_to(Path.cwd()) for p in Path.cwd().rglob("*") if p.is_file() and p.suffix in (".svg", ".png", ".gv")}
         au.generar_token.cache_clear()
         with patch.object(au.Digraph, "render", side_effect=AssertionError("No escribir imágenes")):
-            primero = au.generar_todos(["DNI"])
+            primero = au.generar_todos(["COORDENADA_X"])
             with patch.object(au.Digraph, "pipe", side_effect=AssertionError("No regenerar")):
-                self.assertIs(primero["DNI"], au.generar_todos(["DNI"])["DNI"])
+                self.assertIs(primero["COORDENADA_X"], au.generar_todos(["COORDENADA_X"])["COORDENADA_X"])
         despues = {p.relative_to(Path.cwd()) for p in Path.cwd().rglob("*") if p.is_file() and p.suffix in (".svg", ".png", ".gv")}
         self.assertEqual(antes, despues)
 
@@ -189,13 +260,36 @@ class ProyectoTests(unittest.TestCase):
             with self.assertRaises(ValueError, msg=expresion):
                 au.crear_afnd(expresion)
 
-    def test_campos_nombre_y_limitaciones(self):
-        for texto, lexema in ((app.EJEMPLO.replace("Joaquin Esquivez", "Joaquin"), "Joaquin"),
-                              (app.EJEMPLO.replace("Joaquin", "José"), "José Esquivez"),
-                              (app.EJEMPLO.replace("10:30", "24:00"), "24:00")):
-            _, errores = app.analizar(texto)
-            self.assertIn(lexema, [e["lexema"] for e in errores])
-        self.assertTrue(acepta(self.datos["FECHA"]["afnd"], "31/02/2026"))
+    def test_codigos_validos_e_invalidos(self):
+        for invalido in ("G02", "X1", "Y100", "F0", "F01", "F1000"):
+            _, errores = app.analizar(invalido)
+            self.assertEqual([e["lexema"] for e in errores], [invalido])
+        tokens, errores = app.analizar("G00 X00 Y99;\nG28;")
+        self.assertFalse(errores)
+        self.assertEqual(len(tokens), 6)
+
+    def test_interpretacion_y_programa_atomico(self):
+        programa = "G00 X02 Y03;\nG01 X10 Y20 F120;\nG28;"
+        tokens, errores = app.analizar(programa)
+        self.assertFalse(errores)
+        movimientos, fallos = app.interpretar(tokens)
+        self.assertFalse(fallos)
+        self.assertEqual(movimientos[0]["hasta"], [2, 3])
+        self.assertEqual(movimientos[1]["desde"], [2, 3])
+        self.assertEqual(movimientos[1]["velocidad"], 120)
+        self.assertEqual(movimientos[2]["hasta"], [0, 0])
+        tokens, _ = app.analizar("G01 X01 Y20;")
+        self.assertEqual(app.interpretar(tokens)[0][0]["velocidad"], 100)
+        for texto in ("G00 X01 Y20 F120;", "G28 X01;", "G01 Y20 X01;", "G01 X01 Y20", "G28; G28;"):
+            tokens, errores = app.analizar("G28;\n" + texto)
+            self.assertFalse(errores)
+            resultado, fallos = app.interpretar(tokens)
+            self.assertEqual(resultado, [])
+            self.assertTrue(fallos)
+        cliente = app.app.test_client()
+        resultado = cliente.post("/api/analizar", data={"texto": programa}).json
+        self.assertEqual(len(resultado["traduccion"]), 3)
+        self.assertFalse(resultado["errores_instruccion"])
 
 
 if __name__ == "__main__":

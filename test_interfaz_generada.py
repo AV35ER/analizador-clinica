@@ -65,11 +65,11 @@ class InterfazGeneradaTests(unittest.TestCase):
 
     def test_cinco_expresiones_originales_y_selectores(self):
         originales = {
-            "NOMBRE_PACIENTE": "[A-Za-z]+( [A-Za-z]+)+",
-            "DNI": "[0-9]{8}",
-            "FECHA": "(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/[0-9]{4}",
-            "HORA": "([01][0-9]|2[0-3]):[0-5][0-9]",
-            "ESPECIALIDAD": "[A-Za-z]+"
+            "COMANDO": "G(0[01]|28)",
+            "COORDENADA_X": "X[0-9]{2}",
+            "COORDENADA_Y": "Y[0-9]{2}",
+            "VELOCIDAD": "F[1-9][0-9]{0,2}",
+            "FIN_INSTRUCCION": ";"
         }
         self.assertEqual(automatas.EXPRESIONES, originales)
         botones = self.pagina.findall('.//button[@class="boton-token"]')
@@ -77,19 +77,19 @@ class InterfazGeneradaTests(unittest.TestCase):
         for nombre, expresion in originales.items():
             panel = self.pagina.find('.//div[@id="token-' + nombre + '"]')
             self.assertEqual(texto(panel.find(".//code")), expresion)
-            self.assertEqual([o.get("value") for o in panel.findall(".//select/option")], ["afnd", "afd"])
+            self.assertEqual([o.get("value") for o in panel.findall(".//select/option")], ["afnd", "afd", "afd_minimo"])
             for grupo in automatas.EJEMPLOS[nombre]:
                 for ejemplo in grupo:
                     self.assertIn(ejemplo, texto(panel))
 
-    def test_diez_graficos_tablas_y_quintuplas_del_html(self):
+    def test_quince_graficos_tablas_y_quintuplas_del_html(self):
         for nombre, datos in self.datos.items():
             panel = self.pagina.find('.//div[@id="token-' + nombre + '"]')
-            for tipo in ("afnd", "afd"):
+            for tipo in ("afnd", "afd", "afd_minimo"):
                 with self.subTest(token=nombre, tipo=tipo):
                     modelo = datos[tipo]
                     vista = panel.find('.//div[@data-tipo="' + tipo + '"]')
-                    self.assertEqual("hidden" in vista.attrib, tipo == "afd")
+                    self.assertEqual("hidden" in vista.attrib, tipo != "afnd")
                     quint = vista.find('.//div[@class="quintupla"]')
                     valores = [texto(n) for n in quint.findall("div")]
                     self.assertEqual(valores[0], ", ".join(modelo["estados"]))

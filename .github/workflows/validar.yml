@@ -14,8 +14,15 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Probar espera y comunicación del frontend
-        run: node --test test_cliente.cjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Generar y probar el frontend sin backend
+        run: |
+          python -m pip install -r requirements.txt
+          python generar_frontend.py
+          node --test test_cliente.cjs
+          python -m unittest test_paridad -v
       - name: Construir y ejecutar pruebas en Linux
         run: docker build --tag analizador-clinica:test .
       - name: Iniciar Gunicorn

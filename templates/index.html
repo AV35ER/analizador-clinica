@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analizador de citas médicas</title>
+    <title>Simulador de movimiento 2D</title>
     <style>
         * {
             box-sizing: border-box;
@@ -277,14 +277,14 @@
 <body>
 <main>
     <header>
-        <div class="subtitulo">Clínica privada / Teoría de la Computación</div>
-        <h1>Analizador léxico de citas médicas</h1>
+        <div class="subtitulo">Simulador 2D / Teoría de la Computación</div>
+        <h1>Analizador de instrucciones 2D</h1>
     </header>
 
     <section>
         <h2>El analizador</h2>
-        <p>Analiza registros de citas médicas y construye AFND y AFD a partir de expresiones regulares.</p>
-        <p class="nota">No registra citas reales. La validación sintáctica completa queda para la etapa 3.</p>
+        <p>Reconoce instrucciones de movimiento, muestra sus autómatas y traduce un programa a una secuencia de posiciones.</p>
+        <p class="nota">Simulación didáctica: no controla una máquina real. Los significados son decisiones del proyecto, no una norma industrial.</p>
     </section>
 
     <section>
@@ -314,10 +314,17 @@
     </section>
 
     <section>
-        <h2>Probar registros de citas</h2>
-        <p>Un registro por línea: nombre y apellidos, DNI, fecha, hora y especialidad.</p>
-        <p class="nota">Nombre con espacios simples y especialidad de una palabra, sin tildes ni ñ.
-        FECHA comprueba rangos básicos: acepta 31/02/2026 aunque no exista en el calendario.</p>
+        <h2>Probar instrucciones</h2>
+        <p>Una instrucción por línea, terminada en punto y coma. X e Y: 00–99. F: 1–999 unidades por minuto.</p>
+        <div class="tabla-contenedor"><table>
+            <thead><tr><th>Código</th><th>Significado del proyecto</th><th>Ejemplo</th></tr></thead>
+            <tbody>{% for codigo, significado in codigos.items() %}
+                <tr><td>{{ codigo }}</td><td class="lexemas">{{ significado }}</td>
+                <td><code>{{ "G28;" if codigo == "G28" else codigo ~ " X01 Y20" ~ (" F120;" if codigo == "G01" else ";") }}</code></td></tr>
+            {% endfor %}</tbody>
+        </table></div>
+        <p class="nota">G00 requiere X e Y. G01 admite F opcional (100 por defecto). G28 no admite parámetros.
+        Usa mayúsculas y espacios entre códigos. La traducción es una lista de movimientos; no implementa análisis LR.</p>
 
         <form method="POST" enctype="multipart/form-data">
             <label for="texto"><strong>Texto de entrada</strong></label>
@@ -416,7 +423,9 @@
     inicializarResultados();
 </script>
 {% if modo_estatico %}
-<script src="/config.js"></script>
+<script id="lenguaje-config" type="application/json">{{ configuracion_simulador|tojson }}</script>
+<script src="/motor.js"></script>
+<script src="/vistas.js"></script>
 <script src="/cliente.js"></script>
 {% endif %}
 </body>

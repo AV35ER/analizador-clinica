@@ -4,20 +4,19 @@ from collections import deque
 from graphviz import Digraph
 
 EXPRESIONES = {
-    "NOMBRE_PACIENTE": "[A-Za-z]+( [A-Za-z]+)+",
-    "DNI": "[0-9]{8}",
-    "FECHA": "(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/[0-9]{4}",
-    "HORA": "([01][0-9]|2[0-3]):[0-5][0-9]",
-    "ESPECIALIDAD": "[A-Za-z]+"
+    "COMANDO": "G(0[01]|28)",
+    "COORDENADA_X": "X[0-9]{2}",
+    "COORDENADA_Y": "Y[0-9]{2}",
+    "VELOCIDAD": "F[1-9][0-9]{0,2}",
+    "FIN_INSTRUCCION": ";"
 }
 
 EJEMPLOS = {
-    "NOMBRE_PACIENTE": (["Joaquin Esquivez", "Mateo Salazar", "Maria Lopez", "Gabriel Castillo"],
-                        ["Joaquin", "Mateo7 Salazar", "Maria", "Gabriel Castillo9"]),
-    "DNI": (["74839261", "00000000"], ["1234567", "123456789"]),
-    "FECHA": (["25/09/2026", "31/02/2026"], ["00/09/2026", "25/13/2026"]),
-    "HORA": (["10:30", "00:00", "23:59"], ["24:00", "10:60"]),
-    "ESPECIALIDAD": (["Cardiologia", "Pediatria"], ["Cardiología", "Medicina General"])
+    "COMANDO": (["G00", "G01", "G28"], ["G02", "G1", "g01"]),
+    "COORDENADA_X": (["X01", "X00", "X99"], ["X1", "X100", "X-1"]),
+    "COORDENADA_Y": (["Y20", "Y00", "Y99"], ["Y2", "Y100", "y20"]),
+    "VELOCIDAD": (["F1", "F120", "F999"], ["F0", "F01", "F1000"]),
+    "FIN_INSTRUCCION": ([";"], ["", ";;", ":"])
 }
 
 
@@ -190,6 +189,14 @@ class GeneradorAFND:
                 self.conectar(b, "ε", fin)
             return inicio, fin
         _, hijo, minimo, maximo = nodo
+        if minimo == 1 and maximo is None:
+            # r+ necesita una copia de r y un bucle, no dos copias como r·r*.
+            a, b = self.desde_arbol(hijo)
+            inicio, fin = self.nuevo_estado(), self.nuevo_estado()
+            self.conectar(inicio, "ε", a)
+            self.conectar(b, "ε", a)
+            self.conectar(b, "ε", fin)
+            return inicio, fin
         partes = [self.desde_arbol(hijo) for _ in range(minimo)]
         if maximo is None:
             partes.append(self.estrella(self.desde_arbol(hijo)))
@@ -327,6 +334,48 @@ def generar_quintupla(automata):
     }
 
 
+def minimizar_afd(afd):
+    """Refina la partición finales/no finales hasta distinguir sus futuros.
+
+    Cada bloque estable representa una clase de estados con el mismo lenguaje
+    residual. No se fusionan estados por su aspecto ni se eliminan sumideros.
+    La entrada es el AFD total y alcanzable producido por convertir_afd.
+    """
+    alfabeto = obtener_alfabeto(afd)
+    delta = {(t["origen"], t["simbolo"]): t["destino"] for t in afd["transiciones"]}
+    finales = set(afd["finales"])
+    bloques = [grupo for grupo in (
+        [e for e in afd["estados"] if e not in finales],
+        [e for e in afd["estados"] if e in finales]
+    ) if grupo]
+    while True:
+        pertenencia = {e: i for i, grupo in enumerate(bloques) for e in grupo}
+        nuevos = []
+        for grupo in bloques:
+            firmas = {}
+            for estado in grupo:
+                firma = tuple(pertenencia[delta[estado, simbolo]] for simbolo in alfabeto)
+                firmas.setdefault(firma, []).append(estado)
+            nuevos.extend(firmas.values())
+        if len(nuevos) == len(bloques):
+            break
+        bloques = nuevos
+    # Numeración estable, comenzando por el bloque del estado inicial.
+    bloques.sort(key=lambda grupo: min(afd["estados"].index(e) for e in grupo))
+    nombres = {e: "M" + str(i) for i, grupo in enumerate(bloques) for e in grupo}
+    return {
+        "estados": ["M" + str(i) for i in range(len(bloques))],
+        "inicial": nombres[afd["inicial"]],
+        "finales": ["M" + str(i) for i, grupo in enumerate(bloques) if grupo[0] in finales],
+        "transiciones": [
+            {"origen": "M" + str(i), "simbolo": simbolo,
+             "destino": nombres[delta[grupo[0], simbolo]]}
+            for i, grupo in enumerate(bloques) for simbolo in alfabeto
+        ],
+        "equivalencias": {"M" + str(i): grupo for i, grupo in enumerate(bloques)}
+    }
+
+
 def generar_tabla(automata):
     alfabeto = obtener_alfabeto(automata)
     if any(t["simbolo"] == "ε" for t in automata["transiciones"]):
@@ -386,17 +435,22 @@ def dibujar_automata(automata, titulo="", formato="svg"):
 def generar_token(token, expresion):
     afnd = crear_afnd(expresion)
     afd = convertir_afd(afnd)
+    minimo = minimizar_afd(afd)
     return {
         "expresion": expresion,
         "ejemplos": EJEMPLOS.get(token, ([], [])),
         "afnd": afnd,
         "afd": afd,
+        "afd_minimo": minimo,
         "quintupla_afnd": generar_quintupla(afnd),
         "quintupla_afd": generar_quintupla(afd),
+        "quintupla_afd_minimo": generar_quintupla(minimo),
         "tabla_afnd": generar_tabla(afnd),
         "tabla_afd": generar_tabla(afd),
+        "tabla_afd_minimo": generar_tabla(minimo),
         "imagen_afnd": dibujar_automata(afnd, titulo="AFND - " + token),
-        "imagen_afd": dibujar_automata(afd, titulo="AFD - " + token)
+        "imagen_afd": dibujar_automata(afd, titulo="AFD - " + token),
+        "imagen_afd_minimo": dibujar_automata(minimo, titulo="AFD mínimo - " + token)
     }
 
 

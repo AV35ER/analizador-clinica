@@ -49,7 +49,7 @@ class DespliegueTests(unittest.TestCase):
         self.assertIn("plan: free", Path("render.yaml").read_text())
 
     def test_api_cors_y_equivalencia_interfaz(self):
-        origen = "https://biblioteca-prueba.netlify.app"
+        origen = "https://clinicateo.netlify.app"
         with patch.dict(os.environ, {"CORS_ORIGINS": origen}):
             respuesta = self.cliente.options("/api/analizar", headers={"Origin": origen, "Access-Control-Request-Method": "POST"})
             self.assertEqual(respuesta.headers["Access-Control-Allow-Origin"], origen)
@@ -60,16 +60,16 @@ class DespliegueTests(unittest.TestCase):
             self.assertEqual(respuesta.headers["Access-Control-Allow-Origin"], origen)
             self.assertEqual(len(respuesta.json["tokens"]), 5)
             self.assertEqual(respuesta.json["errores"], [])
-            self.assertEqual(respuesta.json["html"].count("<svg"), 10)
+            self.assertEqual(respuesta.json["html"].count("<svg"), 15)
             pagina = self.cliente.post("/", data={"texto": EJEMPLO}).get_data(as_text=True)
             self.assertIn(respuesta.json["html"], pagina)
             grande = self.cliente.post("/api/analizar", data={"texto": "x" * (LIMITE_ENTRADA + 1)}, headers={"Origin": origen})
             self.assertEqual(grande.status_code, 413)
             self.assertEqual(grande.headers["Access-Control-Allow-Origin"], origen)
             self.assertIn("mensaje", grande.json)
-        invalida = self.cliente.post("/api/analizar", data={"texto": EJEMPLO.replace("74839261", "7483926")})
+        invalida = self.cliente.post("/api/analizar", data={"texto": EJEMPLO.replace("X01", "X001")})
         self.assertEqual(len(invalida.json["tokens"]), 4)
-        self.assertEqual(invalida.json["errores"][0]["lexema"], "7483926")
+        self.assertEqual(invalida.json["errores"][0]["lexema"], "X001")
         self.assertEqual(self.cliente.post("/api/analizar", data={"texto": ""}).status_code, 400)
 
     def test_frontend_estatico_sin_graphviz(self):
@@ -84,16 +84,18 @@ class DespliegueTests(unittest.TestCase):
         self.assertIn('id="resultados"', pagina)
         self.assertIn("inicializarResultados", pagina)
 
-    def test_configuracion_build_api(self):
+    def test_build_independiente_de_render(self):
         from generar_frontend import generar
 
         with TemporaryDirectory() as carpeta:
             with patch.dict(os.environ, {"NETLIFY": "true", "RENDER_API_URL": ""}):
-                with self.assertRaises(ValueError):
-                    generar(Path(carpeta))
-            with patch.dict(os.environ, {"RENDER_API_URL": "https://api.example.org"}):
                 generar(Path(carpeta))
-            self.assertIn("https://api.example.org", Path(carpeta, "config.js").read_text())
+            pagina = Path(carpeta, "index.html").read_text(encoding="utf-8")
+            self.assertIn('id="lenguaje-config"', pagina)
+            self.assertNotIn("onrender.com", pagina)
+            self.assertFalse(Path(carpeta, "config.js").exists())
+            for nombre in ("motor.js", "vistas.js", "cliente.js"):
+                self.assertTrue(Path(carpeta, nombre).is_file())
 
     def test_puerto_y_precalentamiento(self):
         with patch.dict(os.environ, {"PORT": "12345"}):

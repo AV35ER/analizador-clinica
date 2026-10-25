@@ -48,6 +48,18 @@
         {% endif %}
     </section>
 
+    <section>
+        <h2>Traducción del programa</h2>
+        {% if errores or errores_instruccion %}
+            <p class="error">No se simula el programa mientras existan errores.</p>
+            {% for error in errores_instruccion %}<p>Línea {{ error.linea }}: {{ error.detalle }}</p>{% endfor %}
+        {% elif traduccion %}
+            <p>Posición inicial (0, 0). Resultado en JSON:</p>
+            <pre style="overflow-x:auto">{{ traduccion|tojson(indent=2) }}</pre>
+            <p>Posición final: ({{ traduccion[-1].hasta[0] }}, {{ traduccion[-1].hasta[1] }}).</p>
+        {% endif %}
+    </section>
+
     {% if resultados %}
     <section>
         <h2>Generación de autómatas</h2>
@@ -83,6 +95,7 @@
                     <span class="etiqueta">
                         AFD: {{ datos.afd.estados|length }} estados
                     </span>
+                    <span class="etiqueta">AFD mínimo: {{ datos.afd_minimo.estados|length }} estados</span>
                 </p>
             </div>
 
@@ -91,15 +104,16 @@
             <label>Autómata
                 <select onchange="seleccionarTipo('{{ nombre }}', this.value)">
                     <option value="afnd">AFND</option><option value="afd">AFD</option>
+                    <option value="afd_minimo">AFD mínimo</option>
                 </select>
             </label>
-            {% for tipo in ["afnd", "afd"] %}
+            {% for tipo in ["afnd", "afd", "afd_minimo"] %}
                 {% set automata = datos[tipo] %}
                 {% set tabla = datos["tabla_visual_" ~ tipo] %}
                 {% set quintupla = datos["quintupla_" ~ tipo] %}
 
-                <div class="panel panel-automata" data-tipo="{{ tipo }}" {% if tipo == "afd" %}hidden{% endif %}>
-                    <h3>{{ tipo|upper }}</h3>
+                <div class="panel panel-automata" data-tipo="{{ tipo }}" {% if tipo != "afnd" %}hidden{% endif %}>
+                    <h3>{{ "AFD mínimo" if tipo == "afd_minimo" else tipo|upper }}</h3>
                     <p>M = (Q, Σ, δ, q₀, F)</p>
 
                     <div class="controles">
@@ -146,15 +160,15 @@
                         <div>{{ quintupla.F|join(", ") }}</div>
                     </div>
 
-                    {% if tipo == "afd" %}
-                    <h3>Estados equivalentes del AFND</h3>
+                    {% if tipo != "afnd" %}
+                    <h3>{{ "Estados del AFD agrupados" if tipo == "afd_minimo" else "Estados equivalentes del AFND" }}</h3>
 
                     <div class="tabla-contenedor">
                         <table>
                             <thead>
                                 <tr>
-                                    <th>AFD</th>
-                                    <th>Conjunto de estados AFND</th>
+                                    <th>{{ "AFD mínimo" if tipo == "afd_minimo" else "AFD" }}</th>
+                                    <th>{{ "Estados AFD originales" if tipo == "afd_minimo" else "Conjunto de estados AFND" }}</th>
                                 </tr>
                             </thead>
                             <tbody>

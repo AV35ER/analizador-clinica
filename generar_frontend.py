@@ -1,28 +1,25 @@
-import json
-import os
+import shutil
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from flask import render_template
-from app import app, EJEMPLO, EXPRESIONES, EJEMPLOS
+from app import app, EJEMPLO, EXPRESIONES, EJEMPLOS, CODIGOS, LIMITE_ENTRADA
 
 
 def generar(destino=Path("netlify-public")):
-    destino.mkdir(exist_ok=True)
+    destino.mkdir(parents=True, exist_ok=True)
     with app.test_request_context("/"):
         pagina = render_template(
             "index.html", texto=EJEMPLO, tokens=[], errores=[], mensaje="",
-            analizado=False, resultados={}, expresiones=EXPRESIONES, ejemplos=EJEMPLOS, modo_estatico=True
+            analizado=False, resultados={}, expresiones=EXPRESIONES, ejemplos=EJEMPLOS,
+            modo_estatico=True, codigos=CODIGOS, traduccion=[], errores_instruccion=[],
+            configuracion_simulador={"expresiones": EXPRESIONES, "ejemplos": EJEMPLOS,
+                                     "codigos": CODIGOS, "limite": LIMITE_ENTRADA}
         )
     (destino / "index.html").write_text(pagina, encoding="utf-8")
-    origen = os.environ.get("RENDER_API_URL", "").strip().rstrip("/")
-    if os.environ.get("NETLIFY") == "true" and not origen:
-        raise ValueError("Configura RENDER_API_URL en Netlify con el origen HTTPS real de Render")
-    if origen:
-        partes = urlsplit(origen)
-        if partes.scheme != "https" or not partes.hostname or partes.path or partes.query or partes.fragment or partes.username or partes.hostname.endswith(".invalid"):
-            raise ValueError("RENDER_API_URL debe ser el origen HTTPS de Render, sin rutas")
-        (destino / "config.js").write_text("window.CLINICA_API = " + json.dumps(origen) + ";\n", encoding="utf-8")
+    origen = Path(__file__).resolve().parent / "netlify-public"
+    for nombre in ("motor.js", "vistas.js", "cliente.js"):
+        if (origen / nombre).resolve() != (destino / nombre).resolve():
+            shutil.copyfile(origen / nombre, destino / nombre)
 
 
 if __name__ == "__main__":

@@ -1,103 +1,40 @@
-function pausa(ms, signal) {
-    return new Promise((resolve, reject) => {
-        const cancelar = () => {
-            clearTimeout(timer);
-            reject(new DOMException("Cancelado", "AbortError"));
-        };
-        if (signal.aborted) {
-            reject(new DOMException("Cancelado", "AbortError"));
-            return;
-        }
-        const timer = setTimeout(() => {
-            signal.removeEventListener("abort", cancelar);
-            resolve();
-        }, ms);
-        signal.addEventListener("abort", cancelar, {once: true});
-    });
-}
+"use strict";
 
-async function fetchConLimite(url, opciones, ms, signal) {
-    const controlador = new AbortController();
-    const cancelar = () => controlador.abort();
-    if (signal.aborted) throw new DOMException("Cancelado", "AbortError");
-    signal.addEventListener("abort", cancelar, {once: true});
-    const timer = setTimeout(cancelar, ms);
-    try {
-        const respuesta = await fetch(url, {...opciones, signal: controlador.signal, credentials: "omit", cache: "no-store"});
-        const tipo = respuesta.headers.get("content-type") || "";
-        const datos = tipo.includes("application/json") ? await respuesta.json() : null;
-        return {respuesta, datos};
-    } finally {
-        clearTimeout(timer);
-        signal.removeEventListener("abort", cancelar);
-    }
-}
+const formulario = document.querySelector("form");
+const configuracion = JSON.parse(document.getElementById("lenguaje-config").textContent);
+let automatasLocales;
 
-async function esperarServidor(origen, signal, avisar, limite = 180000) {
-    const inicio = Date.now();
-    while (Date.now() - inicio < limite) {
-        avisar("Activando el servidor gratuito. Puede tardar unos minutos. Espera: " + Math.floor((Date.now() - inicio) / 1000) + " s.");
-        try {
-            const {respuesta, datos} = await fetchConLimite(origen + "/healthz", {}, Math.min(15000, limite - (Date.now() - inicio)), signal);
-            if (respuesta.ok && datos && datos.status === "ok") return;
-        } catch (error) {
-            if (signal.aborted) throw error;
-        }
-        await pausa(Math.min(2000, Math.max(0, limite - (Date.now() - inicio))), signal);
-    }
-    throw new Error("El servidor todavía no responde. Tu entrada se conserva. Reintenta en unos minutos. Si persiste, revisa la URL de Render, CORS o los límites gratuitos.");
-}
-
-function conectarFormulario() {
-    const formulario = document.querySelector("form");
+formulario.addEventListener("submit", async evento => {
+    evento.preventDefault();
+    const boton = formulario.querySelector("button[type=submit]");
     const estado = document.getElementById("estado-conexion");
-    const compilar = formulario.querySelector('[type="submit"]');
-    const cancelar = document.createElement("button");
-    cancelar.type = "button";
-    cancelar.textContent = "Cancelar espera";
-    cancelar.hidden = true;
-    formulario.append(cancelar);
-    let controlador;
-    cancelar.addEventListener("click", () => controlador.abort());
-    const avisar = mensaje => {
-        estado.hidden = false;
-        estado.textContent = mensaje;
-    };
-    formulario.addEventListener("submit", async evento => {
-        evento.preventDefault();
-        if (compilar.disabled) return;
-        const datosFormulario = new FormData(formulario);
-        const archivo = datosFormulario.get("archivo");
-        if (archivo && archivo.size > 1048576) {
-            avisar("El archivo supera el máximo de 1 MiB.");
-            return;
+    const resultados = document.getElementById("resultados");
+    boton.disabled = true;
+    estado.hidden = false;
+    estado.textContent = "Compilando en este navegador…";
+    resultados.innerHTML = "";
+    try {
+        const datos = new FormData(formulario), archivo = datos.get("archivo");
+        let texto = datos.get("texto") || "";
+        if (archivo && archivo.name) {
+            if (!archivo.name.toLowerCase().endsWith(".txt")) throw new Error("Selecciona un archivo TXT.");
+            if (archivo.size > configuracion.limite) throw new Error("La entrada supera el máximo de 1 MiB.");
+            try {texto = new TextDecoder("utf-8", {fatal: true}).decode(await archivo.arrayBuffer());}
+            catch {throw new Error("El archivo debe estar codificado en UTF-8.");}
         }
-        const origen = (window.CLINICA_API || "").replace(/\/$/, "");
-        if (!/^https?:\/\//.test(origen) || origen.includes(".invalid")) {
-            avisar("Falta configurar la URL real del servidor Render antes de publicar.");
-            return;
-        }
-        controlador = new AbortController();
-        compilar.disabled = true;
-        cancelar.hidden = false;
-        try {
-            await esperarServidor(origen, controlador.signal, avisar);
-            avisar("Analizando y generando los autómatas…");
-            const {respuesta, datos} = await fetchConLimite(origen + "/api/analizar", {method: "POST", body: datosFormulario}, 90000, controlador.signal);
-            if (datos && typeof datos.html === "string") {
-                document.getElementById("resultados").innerHTML = datos.html;
-                inicializarResultados();
-            }
-            if (!respuesta.ok) throw new Error(datos && datos.mensaje || "No se pudo completar el análisis. Reintenta; tu entrada se conserva.");
-            if (!datos || typeof datos.html !== "string") throw new Error("Respuesta inesperada del servidor. Reintenta en unos minutos.");
-            avisar(datos.mensaje || "Análisis completado.");
-        } catch (error) {
-            avisar(controlador.signal.aborted ? "Espera cancelada. Tu entrada se conserva." : error.name === "AbortError" ? "El análisis tardó demasiado. Tu entrada se conserva; puedes reintentar." : error.message || "No se pudo conectar. Reintenta en unos minutos.");
-        } finally {
-            compilar.disabled = false;
-            cancelar.hidden = true;
-        }
-    });
-}
-
-conectarFormulario();
+        if (new TextEncoder().encode(texto).length > configuracion.limite) throw new Error("La entrada supera el máximo de 1 MiB.");
+        if (!texto.trim()) throw new Error("Introduce instrucciones o carga un archivo TXT.");
+        document.getElementById("texto").value = texto;
+        const resultado = Motor2D.compilar(texto, configuracion);
+        if (!automatasLocales) automatasLocales = Motor2D.generarTodos(configuracion);
+        resultados.innerHTML = Vistas2D.renderizar(resultado, automatasLocales);
+        inicializarResultados();
+        estado.textContent = resultado.errores.length || resultado.errores_instruccion.length
+            ? "Análisis completado con errores. Revisa el resultado."
+            : "Análisis completado en este navegador.";
+    } catch (error) {
+        estado.textContent = error.message || "No se pudo completar el análisis.";
+    } finally {
+        boton.disabled = false;
+    }
+});

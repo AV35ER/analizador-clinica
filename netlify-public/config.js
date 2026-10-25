@@ -1,1 +1,0 @@
-window.CLINICA_API = "https://REEMPLAZAR-SERVICIO-RENDER.invalid";
